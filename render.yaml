@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: vivi-ia-agente
+    env: python
+    plan: free
+    buildCommand: pip install -r frontend/requirements.txt
+    startCommand: python frontend/app_fastapi.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        value: vivi-ia-base
