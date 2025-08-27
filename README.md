@@ -145,7 +145,8 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
    ```
 7. **Deploy!**
 
-📖 **Guia completo**: [DEPLOY_RENDER.md](DEPLOY_RENDER.md)
+📖 **Guia completo**: [GUIA_COMPLETO_DEPLOY_RENDER.md](GUIA_COMPLETO_DEPLOY_RENDER.md)
+📖 **Guia rápido**: [DEPLOY_RENDER.md](DEPLOY_RENDER.md)
 
 ## 🆘 Suporte
 
