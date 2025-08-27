@@ -28,28 +28,61 @@ app = FastAPI(title="Vivi IA - Agente RAG", version="1.0.0")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
-# Inicializar o agente
+# Inicializar o agente na startup
 agente = None
+agente_inicializado = False
 
 class PerguntaRequest(BaseModel):
     pergunta: str
 
-def get_agente():
-    """Inicializa e retorna o agente RAG"""
-    global agente
-    if agente is None:
+def inicializar_agente():
+    """Inicializa o agente RAG na startup"""
+    global agente, agente_inicializado
+    if not agente_inicializado:
         try:
+            print("🚀 Inicializando agente RAG...")
             agente = AgenteBuscaGemini()
-            print("🤖 Agente RAG inicializado com sucesso!")
+            agente_inicializado = True
+            print("✅ Agente RAG inicializado com sucesso!")
+            return True
         except Exception as e:
             print(f"❌ Erro ao inicializar agente: {e}")
+            agente_inicializado = False
+            return False
+    return True
+
+def get_agente():
+    """Retorna o agente RAG, inicializando se necessário"""
+    global agente, agente_inicializado
+
+    if not agente_inicializado:
+        if not inicializar_agente():
             return None
-    return agente
+
+    # Verificar se o agente ainda está ativo
+    try:
+        # Teste simples para ver se o agente responde
+        if hasattr(agente, 'pc') and agente.pc is not None:
+            return agente
+        else:
+            # Re-inicializar se necessário
+            print("🔄 Re-inicializando agente...")
+            return inicializar_agente() and agente
+    except Exception as e:
+        print(f"⚠️ Agente com problemas, re-inicializando: {e}")
+        agente_inicializado = False
+        return inicializar_agente() and agente
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Página principal do frontend"""
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializar agente na startup da aplicação"""
+    print("🌟 Iniciando Vivi IA - Sistema RAG...")
+    inicializar_agente()
 
 @app.get("/api/health")
 async def health_check():
@@ -59,54 +92,85 @@ async def health_check():
         if agente:
             return {
                 'status': 'healthy',
-                'message': 'Agente RAG funcionando normalmente',
-                'agent_type': 'AgenteBuscaGemini'
+                'message': 'Vivi IA funcionando normalmente',
+                'agent_type': 'AgenteBuscaGemini',
+                'agent_initialized': agente_inicializado
             }
         else:
-            raise HTTPException(status_code=500, detail='Agente RAG não pôde ser inicializado')
+            raise HTTPException(status_code=500, detail='Vivi IA não pôde ser inicializada')
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Erro na verificação de saúde: {str(e)}')
 
 @app.post("/api/buscar")
 async def buscar(request: PerguntaRequest):
-    """API para executar buscas no agente RAG"""
+    """API para executar buscas no agente RAG com retry automático"""
     try:
         pergunta = request.pergunta.strip()
-        
+
         if not pergunta:
             raise HTTPException(status_code=400, detail='Pergunta não pode estar vazia')
-        
-        # Obter agente
-        agente = get_agente()
-        if not agente:
-            raise HTTPException(status_code=500, detail='Erro ao inicializar agente RAG')
-        
-        print(f"🔍 Processando pergunta: {pergunta}")
-        
-        # Executar busca
-        resposta = agente.executar_busca_completa(pergunta)
 
-        return {
-            'success': True,
-            'resposta': resposta,
-            'pergunta': pergunta
-        }
-        
+        print(f"🔍 Processando pergunta: {pergunta}")
+
+        # Tentativas de obter o agente (até 3 tentativas)
+        agente = None
+        for tentativa in range(3):
+            agente = get_agente()
+            if agente:
+                break
+            print(f"⚠️ Tentativa {tentativa + 1} de obter agente falhou, tentando novamente...")
+            import asyncio
+            await asyncio.sleep(1)  # Pequena pausa entre tentativas
+
+        if not agente:
+            raise HTTPException(status_code=500, detail='Não foi possível inicializar Vivi IA após várias tentativas')
+
+        # Executar busca com timeout
+        try:
+            resposta = agente.executar_busca_completa(pergunta)
+
+            return {
+                'success': True,
+                'resposta': resposta,
+                'pergunta': pergunta
+            }
+
+        except Exception as busca_error:
+            print(f"❌ Erro na busca: {busca_error}")
+            # Tentar uma vez mais com agente fresco
+            print("🔄 Tentando com agente fresco...")
+            global agente_inicializado
+            agente_inicializado = False
+
+            agente_fresco = get_agente()
+            if agente_fresco:
+                try:
+                    resposta = agente_fresco.executar_busca_completa(pergunta)
+                    return {
+                        'success': True,
+                        'resposta': resposta,
+                        'pergunta': pergunta
+                    }
+                except Exception as segunda_tentativa_error:
+                    print(f"❌ Segunda tentativa também falhou: {segunda_tentativa_error}")
+
+            raise HTTPException(status_code=500, detail=f'Erro na busca após duas tentativas: {str(busca_error)}')
+
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Erro na busca: {e}")
-        raise HTTPException(status_code=500, detail=f'Erro interno: {str(e)}')
+        print(f"❌ Erro inesperado: {e}")
+        raise HTTPException(status_code=500, detail=f'Erro interno inesperado: {str(e)}')
 
 if __name__ == "__main__":
-    print("🚀 Iniciando servidor FastAPI para frontend do Agente RAG...")
+    print("🚀 Iniciando Vivi IA - Sistema RAG...")
     print("🌐 Acesse: http://localhost:5001")
-    
+
     # Verificar se o agente pode ser inicializado
-    if get_agente():
-        print("✅ Agente RAG pronto!")
+    if inicializar_agente():
+        print("✅ Vivi IA pronta para uso!")
     else:
-        print("⚠️ Agente RAG com problemas de inicialização")
-    
+        print("⚠️ Vivi IA com problemas de inicialização")
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5001)
